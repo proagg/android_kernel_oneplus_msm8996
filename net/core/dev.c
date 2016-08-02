@@ -147,6 +147,7 @@ static DEFINE_SPINLOCK(offload_lock);
 struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
 struct list_head ptype_all __read_mostly;	/* Taps */
 static struct list_head offload_base __read_mostly;
+int randomize_mac = 1;
 
 static int netif_rx_internal(struct sk_buff *skb);
 static int call_netdevice_notifiers_info(unsigned long val,
@@ -5524,6 +5525,25 @@ static int __dev_set_promiscuity(struct net_device *dev, int inc, bool notify)
 	}
 	if (notify)
 		__dev_notify_flags(dev, old_flags, IFF_PROMISC);
+
+		if (randomize_mac && (changes & IFF_UP) && !(old_flags & IFF_UP)) {
+			/* randomize MAC whenever interface is brought up */
+			struct sockaddr sa;
+			unsigned int mac4;
+			unsigned short mac2;
+
+			mac4 = prandom_u32();
+			mac2 = prandom_u32();
+			memcpy(sa.sa_data, &mac4, sizeof(mac4));
+			memcpy((char *)sa.sa_data + sizeof(mac4), &mac2, sizeof(mac2));
+			if (!is_valid_ether_addr(sa.sa_data))
+			sa.sa_data[5] = 1;
+			sa.sa_data[0] &= 0xFC;
+			sa.sa_family = dev->type;
+			dev_set_mac_address(dev, &sa);
+		}
+
+
 	return 0;
 }
 
@@ -5778,8 +5798,16 @@ int dev_change_flags(struct net_device *dev, unsigned int flags)
 	if (ret < 0)
 		return ret;
 
+<<<<<<< HEAD
 	changes = (old_flags ^ dev->flags) | (old_gflags ^ dev->gflags);
 	__dev_notify_flags(dev, old_flags, changes);
+=======
+	changes = old_flags ^ dev->flags;
+	if (changes)
+		rtmsg_ifinfo(RTM_NEWLINK, dev, changes);
+
+	__dev_notify_flags(dev, old_flags);
+
 	return ret;
 }
 EXPORT_SYMBOL(dev_change_flags);

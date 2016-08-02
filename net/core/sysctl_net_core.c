@@ -92,7 +92,129 @@ static int rps_sock_flow_sysctl(struct ctl_table *table, int write,
 }
 #endif /* CONFIG_RPS */
 
-extern int randomize_mac;
+#ifdef CONFIG_NET_FLOW_LIMIT
+static DEFINE_MUTEX(flow_limit_update_mutex);
+
+static int flow_limit_cpu_sysctl(struct ctl_table *table, int write,
+				 void __user *buffer, size_t *lenp,
+				 loff_t *ppos)
+{
+	struct sd_flow_limit *cur;
+	struct softnet_data *sd;
+	cpumask_var_t mask;
+	int i, len, ret = 0;
+
+	if (!alloc_cpumask_var(&mask, GFP_KERNEL))
+		return -ENOMEM;
+
+	if (write) {
+		ret = cpumask_parse_user(buffer, *lenp, mask);
+		if (ret)
+			goto done;
+
+		mutex_lock(&flow_limit_update_mutex);
+		len = sizeof(*cur) + netdev_flow_limit_table_len;
+		for_each_possible_cpu(i) {
+			sd = &per_cpu(softnet_data, i);
+			cur = rcu_dereference_protected(sd->flow_limit,
+				     lockdep_is_held(&flow_limit_update_mutex));
+			if (cur && !cpumask_test_cpu(i, mask)) {
+				RCU_INIT_POINTER(sd->flow_limit, NULL);
+				synchronize_rcu();
+				kfree(cur);
+			} else if (!cur && cpumask_test_cpu(i, mask)) {
+				cur = kzalloc_node(len, GFP_KERNEL,
+						   cpu_to_node(i));
+				if (!cur) {
+					/* not unwinding previous changes */
+					ret = -ENOMEM;
+					goto write_unlock;
+				}
+				cur->num_buckets = netdev_flow_limit_table_len;
+				rcu_assign_pointer(sd->flow_limit, cur);
+			}
+		}
+write_unlock:
+		mutex_unlock(&flow_limit_update_mutex);
+	} else {
+		char kbuf[128];
+
+		if (*ppos || !*lenp) {
+			*lenp = 0;
+			goto done;
+		}
+
+		cpumask_clear(mask);
+		rcu_read_lock();
+		for_each_possible_cpu(i) {
+			sd = &per_cpu(softnet_data, i);
+			if (rcu_dereference(sd->flow_limit))
+				cpumask_set_cpu(i, mask);
+		}
+		rcu_read_unlock();
+
+		len = min(sizeof(kbuf) - 1, *lenp);
+		len = cpumask_scnprintf(kbuf, len, mask);
+		if (!len) {
+			*lenp = 0;
+			goto done;
+		}
+		if (len < *lenp)
+			kbuf[len++] = '\n';
+		if (copy_to_user(buffer, kbuf, len)) {
+			ret = -EFAULT;
+			goto done;
+		}
+		*lenp = len;
+		*ppos += len;
+	}
+
+done:
+	free_cpumask_var(mask);
+	return ret;
+}
+
+static int flow_limit_table_len_sysctl(struct ctl_table *table, int write,
+				       void __user *buffer, size_t *lenp,
+				       loff_t *ppos)
+{
+	unsigned int old, *ptr;
+	int ret;
+
+	mutex_lock(&flow_limit_update_mutex);
+
+	ptr = table->data;
+	old = *ptr;
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (!ret && write && !is_power_of_2(*ptr)) {
+		*ptr = old;
+		ret = -EINVAL;
+	}
+
+	mutex_unlock(&flow_limit_update_mutex);
+	return ret;
+}
+#endif /* CONFIG_NET_FLOW_LIMIT */
+
+#ifdef CONFIG_NET_SCHED
+static int set_default_qdisc(struct ctl_table *table, int write,
+			     void __user *buffer, size_t *lenp, loff_t *ppos)
+{
+	char id[IFNAMSIZ];
+	struct ctl_table tbl = {
+		.data = id,
+		.maxlen = IFNAMSIZ,
+	};
+	int ret;
+
+	qdisc_get_default(id, IFNAMSIZ);
+
+	ret = proc_dostring(&tbl, write, buffer, lenp, ppos);
+	if (write && ret == 0)
+		ret = qdisc_set_default(id);
+	return ret;
+}
+#endif
 
 #ifdef CONFIG_NET_FLOW_LIMIT
 static DEFINE_MUTEX(flow_limit_update_mutex);

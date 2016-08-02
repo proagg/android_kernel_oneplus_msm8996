@@ -147,7 +147,6 @@ static DEFINE_SPINLOCK(offload_lock);
 struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
 struct list_head ptype_all __read_mostly;	/* Taps */
 static struct list_head offload_base __read_mostly;
-int randomize_mac = 1;
 
 static int netif_rx_internal(struct sk_buff *skb);
 static int call_netdevice_notifiers_info(unsigned long val,
@@ -6405,23 +6404,6 @@ err_uninit:
 	if (dev->netdev_ops->ndo_uninit)
 		dev->netdev_ops->ndo_uninit(dev);
 	goto out;
-
-	if (randomize_mac && (changes & IFF_UP) && !(old_flags & IFF_UP)) {
-		/*randomize MAC whenever interface is brought up */
-		struct sockaddr sa;
-		unsigned int mac4;
-		unsigned int mac2;
-
-		mac4 = prandom_u32();
-		mac2 = prandom_u32();
-		memcpy(sa.sa_data, &mac4, sizeof(mac4));
-		memcpy((char *)sa.sa_data + sizeof(mac4), &mac2, sizeof(mac2));
-		if (!is_valid_ether_addr(sa.sa_data))
-		sa.sa_data[5] = 1;
-		sa.sa_data[0] &= 0xFC;
-		sa.sa_family = dev->type;
-		dev_set_mac_address(dev, &sa);
-	}
 }
 EXPORT_SYMBOL(register_netdevice);
 

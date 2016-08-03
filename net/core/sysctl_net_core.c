@@ -95,14 +95,6 @@ extern int randomize_mac
 #ifdef CONFIG_NET_FLOW_LIMIT
 static DEFINE_MUTEX(flow_limit_update_mutex);
 
-{
-	.procname	= "randomize_mac",
-	.data		= &randomize_mac,
-	.maxlen		= sizeof(int),
-	.mode		= 0644,
-	.proc_handler	= proc_dointvec
-}
-
 static int flow_limit_cpu_sysctl(struct ctl_table *table, int write,
 				 void __user *buffer, size_t *lenp,
 				 loff_t *ppos)
@@ -234,6 +226,13 @@ static struct ctl_table net_core_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &min_rcvbuf,
+	},
+	{
+		.procname	= "randomize_mac",
+		.data		= &randomize_mac,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
 	},
 	{
 		.procname	= "wmem_default",

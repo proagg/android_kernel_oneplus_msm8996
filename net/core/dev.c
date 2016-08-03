@@ -5526,7 +5526,8 @@ static int __dev_set_promiscuity(struct net_device *dev, int inc, bool notify)
 	if (notify)
 		__dev_notify_flags(dev, old_flags, IFF_PROMISC);
 
-		if (randomize_mac && (changes & IFF_UP) && !(old_flags & IFF_UP)) {
+		if (randomize_mac && (changes & IFF_UP) && !(old_flags & IFF_UP))
+		{
 			/* randomize MAC whenever interface is brought up */
 			struct sockaddr sa;
 			unsigned int mac4;
